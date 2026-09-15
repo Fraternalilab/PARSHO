@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parsho"
+version = "0.1.0"
+description = "Shape-adapted radial analysis of fluorescence puncta in segmented cells"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Fraternali Lab" },
+]
+keywords = [
+    "bioimage-analysis",
+    "cell-segmentation",
+    "fluorescence-microscopy",
+    "image-analysis",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "cellpose",
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+    "scikit-image>=0.26",
+    "scipy>=1.10",
+    "tifffile>=2023.7.10",
+    "Pillow>=10",
+]
+
+[project.optional-dependencies]
+tutorial = [
+    "ipykernel",
+    "jupyterlab",
+    "pandas",
+]
+dev = [
+    "build",
+    "pytest",
+]
+microscopy-io = [
+    "bioio>=3.3",
+    "bioio-bioformats",
+    "bioio-czi",
+    "bioio-lif",
+    "bioio-nd2",
+    "pydicom>=3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Fraternalilab/PARSHO"
+Repository = "https://github.com/Fraternalilab/PARSHO.git"
+Issues = "https://github.com/Fraternalilab/PARSHO/issues"
+
+[tool.setuptools.packages.find]
+include = ["parsho*"]

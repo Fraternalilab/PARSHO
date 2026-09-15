@@ -1,24 +1,29 @@
+"""Threshold fluorescence channels and label aggregate regions."""
+
 import numpy as np
-from skimage.filters import threshold_otsu, threshold_local
-from skimage.morphology import remove_small_objects
+from skimage.filters import threshold_local, threshold_otsu
 from skimage.measure import label
+from skimage.morphology import remove_small_objects
 
 
-def extract_aggregate_masks(
+Threshold = float | np.ndarray
+
+
+def extract_masks(
     aggregate_channel: np.ndarray,
     cell_masks: np.ndarray,
     method: str = "otsu",
     percentile: float = 95.0,
     local_block_size: int = 51,
     min_size_px: int = 10,
-    scale: float = 1.0
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Extract aggregate masks constrained within cell boundaries.
+    scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray, Threshold]:
+    """Extract masks constrained within cell boundaries.
 
     Returns:
         binary_mask:      Boolean (H, W) — True wherever an aggregate is detected.
         labelled_mask:    Integer (H, W) — each aggregate gets a unique ID (0 = background).
-        thresh:           Float — the threshold value used for segmentation.
+        thresh:           Scalar or local threshold image used for segmentation.
     """
     img = aggregate_channel.astype(np.float32)
     cell_interior = cell_masks > 0
@@ -33,14 +38,14 @@ def extract_aggregate_masks(
         binary = (img > thresh) & cell_interior
 
     elif method == "local":
-        local_thresh = threshold_local(img, block_size=local_block_size)
-        binary = (img > local_thresh) & cell_interior
+        thresh = threshold_local(img, block_size=local_block_size)
+        binary = (img > thresh) & cell_interior
 
     else:
         raise ValueError(f"Unknown method: {method!r}")
 
     # ── Morphological cleanup ────────────────────────────────────────────
-    binary = remove_small_objects(binary, min_size=min_size_px)
+    binary = _remove_objects_smaller_than(binary, min_size_px)
 
     # ── Label connected components ───────────────────────────────────────
     labelled = label(binary)
@@ -52,9 +57,9 @@ def re_threshold_masks(
     aggregate_channel: np.ndarray,
     cell_masks: np.ndarray,
     min_size_px: int = 10,
-    thresh: float = 0.0
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Extract aggregate masks constrained within cell boundaries.
+    thresh: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply a fixed aggregate threshold within cell boundaries.
 
     Returns:
         binary_mask:      Boolean (H, W) — True wherever an aggregate is detected.
@@ -66,14 +71,26 @@ def re_threshold_masks(
     # ── Threshold ────────────────────────────────────────────────────────
     binary = (img > thresh) & cell_interior
 
-
     # ── Morphological cleanup ────────────────────────────────────────────
-    binary = remove_small_objects(binary, min_size=min_size_px)
+    binary = _remove_objects_smaller_than(binary, min_size_px)
 
     # ── Label connected components ───────────────────────────────────────
     labelled = label(binary)
 
     return binary, labelled
+
+
+def _remove_objects_smaller_than(
+    binary: np.ndarray,
+    min_size_px: int,
+) -> np.ndarray:
+    """Remove components smaller than ``min_size_px`` using skimage's new API.
+
+    ``max_size`` removes objects whose size is less than or equal to its value,
+    whereas the deprecated ``min_size`` removed objects strictly smaller than
+    its value. Subtracting one preserves the existing public API semantics.
+    """
+    return remove_small_objects(binary, max_size=min_size_px - 1)
 
 
 def find_optimal_threshold(
@@ -85,32 +102,38 @@ def find_optimal_threshold(
     neg_nuc_binary,
     t_min=None,
     t_max=None,
+    verbose: bool = False,
 ):
-    """
-    Find threshold that maximizes:
-        S1(t) - lambda * S2(t)
+    """Find the first threshold with positive signal and no negative signal.
+
+    Nuclear pixels are excluded before the positive and negative aggregate
+    signals are compared.
     """
 
-    # Define search space if not given
+    if t_min is None or t_max is None:
+        raise ValueError("t_min and t_max must both be provided")
+
     thresholds = np.linspace(t_min, t_max * 10, 1000)
 
-    for i,t in enumerate(thresholds):
-        pos_binary, pos_labelled = re_threshold_masks(pos_img_agregates, pos_masks, min_size_px = 2, thresh = t)
-        neg_binary, neg_labelled = re_threshold_masks(neg_img_agregates, neg_masks, min_size_px = 2, thresh = t)
+    for i, threshold in enumerate(thresholds):
+        pos_binary, _ = re_threshold_masks(
+            pos_img_agregates, pos_masks, min_size_px=2, thresh=threshold
+        )
+        neg_binary, _ = re_threshold_masks(
+            neg_img_agregates, neg_masks, min_size_px=2, thresh=threshold
+        )
 
-        # compute the substraction
+        # Exclude nuclear signal from the aggregate measurements.
         pos_binary[pos_nuc_binary] = 0
-
-        # compute the substraction
         neg_binary[neg_nuc_binary] = 0
 
-        print(i)
+        if verbose:
+            print(f"Threshold {i + 1} of {len(thresholds)}")
 
         s1 = pos_binary.sum()  # True positives
         s2 = neg_binary.sum()  # False positives
         if s1 > 0 and s2 == 0:
-            return t, s1
+            return threshold, s1
         elif s1 == 0:
             raise ValueError("No positives found at any threshold")
-    raise t
-
+    raise ValueError("No threshold separated positive and negative signal")

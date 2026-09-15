@@ -18,6 +18,9 @@ lib/
 lib64/
 parts/
 sdist/
+tests/
+.vscode/
+.vscode/settings.json
 var/
 wheels/
 share/python-wheels/
