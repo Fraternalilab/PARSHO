@@ -30,12 +30,9 @@ from parsho.segmentation import extract_masks
 from parsho.utils import radial_distributions_to_records
 
 
-PROJECT_DIR = Path(
-    "/media/ograciac/light-roast/ograciac/MorroCells/"
-    "DatasetsParsho/RNA-scope"
-)
-DATA_DIR = PROJECT_DIR
-RESULTS_DIR = PROJECT_DIR / "tutorial_results"
+# Replace this with the directory containing the C1/C2/C3/C4 image sets.
+DATA_DIR = Path("path/to/your/data")
+RESULTS_DIR = DATA_DIR / "tutorial_results"
 INSPECTION_DIR = RESULTS_DIR / "inspection_images"
 CELL_CSV = RESULTS_DIR / "final_data.csv"
 TRPV1_RADIAL_CSV = RESULTS_DIR / "trpv1_radial_distribution.csv"

@@ -43,6 +43,7 @@ dependencies = [
 [project.optional-dependencies]
 tutorial = [
     "ipykernel",
+    "ipywidgets>=8,<9",
     "jupyterlab",
     "pandas",
 ]

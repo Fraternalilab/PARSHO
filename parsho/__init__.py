@@ -1,5 +1,13 @@
 """Tools for cell segmentation and fluorescence puncta analysis."""
 
+import torch
+
+
+# Cellpose constructs trusted sparse tensors from internally generated,
+# bounds-clamped coordinates. Explicitly retain PyTorch's performance-oriented
+# default while preventing its implicit-policy warning.
+torch.sparse.check_sparse_tensor_invariants.disable()
+
 __version__ = "0.1.0"
 
 from parsho.img_utils import extract_channels, load_image, load_mask_npy

@@ -16,6 +16,7 @@ dependencies:
   - pandas
   - jupyterlab
   - ipykernel
+  - ipywidgets>=8,<9
   - pip:
       - cellpose
       - -e .[microscopy-io]

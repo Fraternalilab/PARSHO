@@ -30,9 +30,9 @@ from parsho.segmentation import extract_masks
 from parsho.utils import radial_distributions_to_records
 
 
-PROJECT_DIR = Path("/path/to/data")
-DATA_DIR = PROJECT_DIR
-RESULTS_DIR = PROJECT_DIR / "results"
+# Replace this with the directory containing the C1/C2/C3 image sets.
+DATA_DIR = Path("path/to/your/data")
+RESULTS_DIR = DATA_DIR / "results"
 INSPECTION_DIR = RESULTS_DIR / "inspection_images"
 CELL_CSV = RESULTS_DIR / "final_data.csv"
 RADIAL_CSV = RESULTS_DIR / "radial_distribution.csv"
@@ -40,7 +40,7 @@ RADIAL_CSV = RESULTS_DIR / "radial_distribution.csv"
 RADIAL_BINS = 10
 AGGREGATE_MIN_SIZE = 2
 NUCLEUS_MIN_SIZE = 5
-REMOVE_NUCLEAR_SIGNAL_FROM_AGGREGATES = True
+REMOVE_NUCLEAR_SIGNAL_FROM_AGGREGATES = False
 
 CELLPOSE_PARAMETERS = {
     "batch_size": 32,

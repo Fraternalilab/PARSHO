@@ -103,11 +103,13 @@ def find_optimal_threshold(
     t_min=None,
     t_max=None,
     verbose: bool = False,
+    min_size_px: int = 2,
 ):
     """Find the first threshold with positive signal and no negative signal.
 
     Nuclear pixels are excluded before the positive and negative aggregate
-    signals are compared.
+    signals are compared. Supply empty nuclear masks to include nuclear signal.
+    ``min_size_px`` should match the minimum aggregate size used for analysis.
     """
 
     if t_min is None or t_max is None:
@@ -117,10 +119,10 @@ def find_optimal_threshold(
 
     for i, threshold in enumerate(thresholds):
         pos_binary, _ = re_threshold_masks(
-            pos_img_agregates, pos_masks, min_size_px=2, thresh=threshold
+            pos_img_agregates, pos_masks, min_size_px=min_size_px, thresh=threshold
         )
         neg_binary, _ = re_threshold_masks(
-            neg_img_agregates, neg_masks, min_size_px=2, thresh=threshold
+            neg_img_agregates, neg_masks, min_size_px=min_size_px, thresh=threshold
         )
 
         # Exclude nuclear signal from the aggregate measurements.

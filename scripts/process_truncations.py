@@ -29,12 +29,9 @@ from parsho.plotting import (
 from parsho.segmentation import extract_masks
 
 
-PROJECT_DIR = Path(
-    "/media/ograciac/light-roast/ograciac/MorroCells/"
-    "DatasetsParsho/Titin-truncations"
-)
-DATA_DIR = PROJECT_DIR
-RESULTS_DIR = PROJECT_DIR / "results"
+# Replace this with the directory containing the condition subdirectories.
+DATA_DIR = Path("path/to/your/data")
+RESULTS_DIR = DATA_DIR / "results"
 INSPECTION_DIR = RESULTS_DIR / "inspection_images"
 CELL_CSV = RESULTS_DIR / "final_data.csv"
 

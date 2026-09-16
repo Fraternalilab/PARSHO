@@ -245,11 +245,11 @@ def plot_nucleus_centered_distribution(
     dpi: int = 150,
     show: bool = True,
     cell_name: str | None = None,
+    center_label: str = "Nucleus",
 ):
     """Plot a nucleus-centered, cell-shape-adapted radial distribution.
 
-    ``distribution`` must come from
-    :func:`parsho.compute_nucleus_centered_distribution`. Its stored centroid
+    ``distribution`` may come from either PARSHO radial calculation. Its stored centroid
     is used to reconstruct the same shape-adapted bins used for measurement.
 
     Args:
@@ -263,6 +263,8 @@ def plot_nucleus_centered_distribution(
         cell_name: Optional display name for the cell. The numeric
             ``distribution.label`` is still used internally to select the
             correct mask. When omitted, the title uses that numeric label.
+        center_label: Display label for the origin; use ``"Cell"`` for a
+            cell-centered distribution. This does not alter the stored bins.
 
     Returns:
         The Matplotlib figure and a dictionary containing its four axes.
@@ -286,7 +288,7 @@ def plot_nucleus_centered_distribution(
         aggregate_channel,
         distribution,
         section_map,
-        "Nucleus-centered shape-adapted bins (white = aggregates)",
+        f"{center_label}-centered shape-adapted bins (white = aggregates)",
         save_path,
         dpi,
         show,
@@ -330,7 +332,9 @@ def _plot_distribution_panels(
         section_map[row_slice, column_slice], cmap="twilight", interpolation="nearest"
     )
     effective_mask = (
-        cell_region if aggregate_mask is None else aggregate_mask != 0
+        cell_region
+        if aggregate_mask is None
+        else (aggregate_mask != 0) & cell_region
     )
     cropped_aggregates = effective_mask[row_slice, column_slice]
     if np.any(cropped_aggregates):
