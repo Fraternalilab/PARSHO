@@ -33,6 +33,11 @@ class CellMetrics:
     agg_aspect_ratio: float
     agg_circularity: float
 
+    @property
+    def aggregate_coverage_fraction(self) -> float:
+        """Fraction of cell pixels occupied by aggregates (legacy: jaccard)."""
+        return self.jaccard
+
 
 def subtract_nuclear_from_aggregate(
     agg_binary: np.ndarray,
@@ -45,7 +50,11 @@ def subtract_nuclear_from_aggregate(
     nuclear_pixels = nuc_binary != 0
     agg_labels[nuclear_pixels] = 0
     agg_binary[nuclear_pixels] = 0
-    return agg_binary, agg_labels
+    # Preserve separate original objects, but give disconnected fragments
+    # distinct identities, matching the single-field object table.
+    from skimage.measure import label
+
+    return agg_binary, label(agg_labels)
 
 
 def build_overlay(
@@ -105,10 +114,18 @@ def mask_overlay_to_transfected(
     cell_masks: np.ndarray,
     transfected_labels: list[int],
 ) -> np.ndarray:
-    """Return a copy of the overlay containing only transfected cells."""
+    """Compatibility name for :func:`mask_overlay_to_cells`."""
+    return mask_overlay_to_cells(overlay, cell_masks, transfected_labels)
+
+
+def mask_overlay_to_cells(overlay, cell_masks, cell_labels):
+    """Copy an overlay, retaining only the explicitly selected cell IDs.
+
+    Selection can represent any filter; it need not indicate transfection.
+    """
     overlay = overlay.copy()
     final_cells = np.zeros_like(cell_masks)
-    for label in transfected_labels:
+    for label in cell_labels:
         final_cells[cell_masks == label] = 1
     overlay[final_cells == 0] = 0
     return overlay
@@ -161,6 +178,7 @@ def compute_cell_metrics(
 
         # Average shape measurements across aggregates overlapping this cell.
         agg_of_cell = np.unique(agg_labels[cell_region])
+        agg_of_cell = agg_of_cell[agg_of_cell > 0]
         agg_aspect_ratio = 0
         agg_circularity = 0
         for aggregate_label in agg_of_cell:
@@ -169,9 +187,9 @@ def compute_cell_metrics(
             agg_aspect_ratio += agg_metrics[aggregate_label].get("aspect_ratio", 0.0)
             agg_circularity += agg_metrics[aggregate_label].get("circularity", 0.0)
 
-        if len(agg_of_cell) > 1:
-            agg_aspect_ratio /= len(agg_of_cell) - 1
-            agg_circularity /= len(agg_of_cell) - 1
+        if len(agg_of_cell):
+            agg_aspect_ratio /= len(agg_of_cell)
+            agg_circularity /= len(agg_of_cell)
 
         results.append(
             CellMetrics(

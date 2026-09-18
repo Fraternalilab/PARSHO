@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "Please cite this software and the source datasets separately; retain the revision used in your analysis."
+type: software
+title: "PARSHO: shape-adapted radial analysis of fluorescence puncta"
+authors:
+  - name: "Fraternali Lab"
+version: 0.1.0
+repository-code: "https://github.com/Fraternalilab/PARSHO"
+url: "https://github.com/Fraternalilab/PARSHO"
+license: MIT

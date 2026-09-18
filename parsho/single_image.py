@@ -30,8 +30,9 @@ def load_field_channels(path, *, scene=0, axes="", time=0, z_mode="maximum", z=0
     zero-based here; the notebook presents them starting at one.
     """
     path = Path(path)
-    if scene < 0 or time < 0 or z < 0:
-        raise ValueError("Scene, time and Z indices must be nonnegative.")
+    if any(not isinstance(value, (int, np.integer)) or isinstance(value, bool) or value < 0
+           for value in (scene, time, z)):
+        raise ValueError("Scene, time and Z indices must be nonnegative integers.")
     if path.suffix.lower() in {".tif", ".tiff"}:
         import tifffile
 
@@ -144,11 +145,13 @@ class DetectionSettings:
             raise ValueError("Choose Otsu, percentile, local or manual detection.")
         if not isinstance(self.min_size, int) or self.min_size < 1:
             raise ValueError("Minimum object area must be a positive integer (pixels).")
-        if not np.isfinite([self.scale, self.percentile, self.manual_threshold]).all():
-            raise ValueError("Threshold settings must be finite numbers.")
-        if self.scale <= 0 or not 0 <= self.percentile <= 100:
-            raise ValueError("Otsu multiplier must be positive; percentile must be between 0 and 100.")
-        if not isinstance(self.block_size, int) or self.block_size < 3 or self.block_size % 2 != 1:
+        if self.method == "otsu" and (not np.isfinite(self.scale) or self.scale <= 0):
+            raise ValueError("Otsu multiplier must be positive and finite.")
+        if self.method == "percentile" and (not np.isfinite(self.percentile) or not 0 <= self.percentile <= 100):
+            raise ValueError("Percentile must be between 0 and 100.")
+        if self.method == "manual" and not np.isfinite(self.manual_threshold):
+            raise ValueError("Manual threshold must be finite.")
+        if self.method == "local" and (not isinstance(self.block_size, int) or self.block_size < 3 or self.block_size % 2 != 1):
             raise ValueError("Local window width must be an odd integer of at least 3 pixels.")
 
 
@@ -202,6 +205,28 @@ def analyze_field(
     Retention is shared across signals. The aggregate filter requires an object
     in ANY selected signal. Labels are original cell labels in every output.
     Missing nuclear measurements are None, not biological zero measurements.
+
+    Args:
+        cells: Aligned (H, W) integer cell labels; 0 is background.
+        signals: Mapping of unique signal names to raw (H, W) intensity arrays.
+        detection: Mapping of signal names to DetectionSettings; defaults to Otsu.
+        nucleus: Optional aligned nuclear intensity image, not a precomputed mask.
+        nucleus_detection: Nuclear threshold settings (default Otsu, 5 pixels).
+        transfection: Optional aligned marker intensity for cell filtering.
+        transfection_detection: Marker threshold settings (default Otsu, 2 pixels).
+        remove_nuclear: Exclude nuclear pixels from puncta and analyzed intensities.
+        require_nucleus: Retain only cells overlapping detected nuclear pixels.
+        require_transfection: Retain only cells overlapping the detected marker.
+        require_aggregates: Require puncta in at least one measured signal.
+        exclude_border: Remove cells touching the image frame.
+        radial: Calculate per-cell radial profiles when True.
+        radial_center: 'auto' (nucleus if supplied), 'cell' or 'nucleus'.
+        radial_bins: Positive number of shape-adapted centre-to-boundary sections.
+        pixel_size_um: Optional square-pixel width; adds area columns in um^2.
+
+    Returns:
+        Dictionary of cell/object/radial/filter records, label arrays, intensities,
+        thresholds, radial distributions and effective settings. See docs/api.md.
     """
     cells = np.asarray(cells)
     if cells.ndim != 2 or not np.issubdtype(cells.dtype, np.integer) or (cells < 0).any():
@@ -211,6 +236,10 @@ def analyze_field(
         raise ValueError("No cells were found. Check segmentation channels and Cellpose settings, then rerun segmentation.")
     if not signals:
         raise ValueError("Tick 'Measure aggregates / puncta' for at least one channel.")
+    if any(not isinstance(name, str) or not name.strip() for name in signals):
+        raise ValueError("Measured signals need nonempty names.")
+    if detection is not None and set(detection) != set(signals):
+        raise ValueError("Supply detection settings for every measured signal, and no others.")
     for image in [*signals.values(), *([] if nucleus is None else [nucleus]),
                   *([] if transfection is None else [transfection])]:
         if np.shape(image) != cells.shape or not np.isrealobj(image) or not np.isfinite(image).all():
@@ -324,7 +353,15 @@ def analyze_field(
             ))
         for record in radial_distributions_to_records({"sample": distributions[name]}):
             radial_records.append(dict(signal=name, center=center, **record))
+    analysis_options = dict(remove_nuclear=remove_nuclear, require_nucleus=require_nucleus,
+                            require_transfection=require_transfection, require_aggregates=require_aggregates,
+                            exclude_border=exclude_border, radial=radial, radial_center=radial_center,
+                            radial_bins=radial_bins, pixel_size_um=pixel_size_um,
+                            nucleus_supplied=nucleus is not None, transfection_supplied=transfection is not None,
+                            nucleus_detection=asdict(nucleus_detection or DetectionSettings(min_size=5)),
+                            transfection_detection=asdict(transfection_detection or DetectionSettings()))
     return dict(cells=cells, nucleus_labels=nuc_labels, transfection_mask=trans_binary,
+                analysis_options=analysis_options,
                 signal_masks=signal_masks, intensities=intensities, retained_labels=retained,
                 cell_records=cell_records, object_records=objects, radial_records=radial_records,
                 filter_records=audit, distributions=distributions, center=center,

@@ -25,6 +25,7 @@ def extract_masks(
         labelled_mask:    Integer (H, W) — each aggregate gets a unique ID (0 = background).
         thresh:           Scalar or local threshold image used for segmentation.
     """
+    _validate_detection(aggregate_channel, cell_masks, min_size_px)
     img = aggregate_channel.astype(np.float32)
     cell_interior = cell_masks > 0
 
@@ -45,10 +46,7 @@ def extract_masks(
         raise ValueError(f"Unknown method: {method!r}")
 
     # ── Morphological cleanup ────────────────────────────────────────────
-    binary = _remove_objects_smaller_than(binary, min_size_px)
-
-    # ── Label connected components ───────────────────────────────────────
-    labelled = label(binary)
+    binary, labelled = _label_in_cells(binary, cell_masks, min_size_px)
 
     return binary.astype(bool), labelled, thresh
 
@@ -65,6 +63,7 @@ def re_threshold_masks(
         binary_mask:      Boolean (H, W) — True wherever an aggregate is detected.
         labelled_mask:    Integer (H, W) — each aggregate gets a unique ID (0 = background).
     """
+    _validate_detection(aggregate_channel, cell_masks, min_size_px)
     img = aggregate_channel.astype(np.float32)
     cell_interior = cell_masks > 0
 
@@ -72,12 +71,31 @@ def re_threshold_masks(
     binary = (img > thresh) & cell_interior
 
     # ── Morphological cleanup ────────────────────────────────────────────
-    binary = _remove_objects_smaller_than(binary, min_size_px)
-
-    # ── Label connected components ───────────────────────────────────────
-    labelled = label(binary)
+    binary, labelled = _label_in_cells(binary, cell_masks, min_size_px)
 
     return binary, labelled
+
+
+def _validate_detection(image, cells, minimum):
+    if np.ndim(image) != 2 or np.shape(image) != np.shape(cells):
+        raise ValueError("Signal and cell labels must be aligned 2-D arrays.")
+    if not np.isfinite(image).all():
+        raise ValueError("Signal intensities must be finite.")
+    if not np.issubdtype(cells.dtype, np.integer) or (cells < 0).any():
+        raise ValueError("Cell masks must contain nonnegative integer labels.")
+    if not np.any(cells > 0):
+        raise ValueError("No cells are available for thresholding; inspect segmentation first.")
+    if not isinstance(minimum, (int, np.integer)) or minimum < 1:
+        raise ValueError("Minimum object area must be a positive integer.")
+
+
+def _label_in_cells(binary, cells, minimum):
+    """Split touching objects at cell boundaries, then filter by object area."""
+    labels = label(np.where(binary, cells, 0))
+    keep = np.bincount(labels.ravel()) >= minimum
+    keep[0] = False
+    binary = keep[labels]
+    return binary, label(np.where(binary, cells, 0))
 
 
 def _remove_objects_smaller_than(

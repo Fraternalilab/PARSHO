@@ -236,7 +236,7 @@ def plot_aggregate_channel_color_labelled(
         plt.show()
 
 
-def plot_nucleus_centered_distribution(
+def plot_radial_distribution(
     cell_masks: np.ndarray,
     aggregate_mask: np.ndarray | None,
     aggregate_channel: np.ndarray,
@@ -247,7 +247,7 @@ def plot_nucleus_centered_distribution(
     cell_name: str | None = None,
     center_label: str = "Nucleus",
 ):
-    """Plot a nucleus-centered, cell-shape-adapted radial distribution.
+    """Plot a cell- or nucleus-centred, shape-adapted radial distribution.
 
     ``distribution`` may come from either PARSHO radial calculation. Its stored centroid
     is used to reconstruct the same shape-adapted bins used for measurement.
@@ -294,6 +294,11 @@ def plot_nucleus_centered_distribution(
         show,
         cell_name,
     )
+
+
+def plot_nucleus_centered_distribution(*args, **kwargs):
+    """Compatibility name for plot_radial_distribution (default centre: nucleus)."""
+    return plot_radial_distribution(*args, **kwargs)
 
 
 def _plot_distribution_panels(

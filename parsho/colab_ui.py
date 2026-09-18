@@ -26,6 +26,7 @@ class FieldPicker:
 
     def __init__(self, title="Sample"):
         self.title = title
+        self.is_demo = False
         self.channels = []
         self.metadata = []
         self.loaded_signature = None
@@ -35,6 +36,9 @@ class FieldPicker:
         upload = widgets.Button(description=f"Upload {title.lower()} files", button_style="info",
                                 layout=widgets.Layout(width="240px"))
         upload.on_click(self._upload)
+        demo = widgets.Button(description="Try the supplied demo", button_style="",
+                              layout=widgets.Layout(width="240px"))
+        demo.on_click(self._demo)
         self.paths = widgets.Textarea(placeholder="Optional: one mounted Google Drive file path per line",
                                      layout=widgets.Layout(width="95%", height="65px"))
         use_paths = widgets.Button(description="Use these file paths", layout=widgets.Layout(width="200px"))
@@ -45,7 +49,8 @@ class FieldPicker:
                                           layout=widgets.Layout(width="250px"))
         self.load_button.on_click(self._load)
         self.widget = widgets.VBox([
-            widgets.HTML(f"<b>{html.escape(title)} — one field of view</b>"), upload, drive,
+            widgets.HTML(f"<b>{html.escape(title)} — one field of view</b>"),
+            widgets.HBox([upload, demo]) if title == "Sample" else upload, drive,
             self.file_box, self.load_button, self.output,
         ])
 
@@ -59,8 +64,22 @@ class FieldPicker:
             self.set_paths([str(Path(name).resolve()) for name in uploaded])
         # files.upload has already saved the bytes; do not retain another copy.
 
+    def _demo(self, _):
+        from parsho.examples import demo_files
+
+        with self.output:
+            clear_output(wait=True)
+            try:
+                self.set_paths(demo_files())
+                self.load()
+                self.is_demo = True
+                print("Demo roles: channel 1 = cells, channel 2 = aggregates, channel 3 = nuclei.")
+            except Exception as error:
+                print(f"Demo could not be loaded: {error}. You can still upload your own files.")
+
     def set_paths(self, paths):
-        paths = [Path(value.strip()).expanduser() for value in paths if value.strip()]
+        self.is_demo = False
+        paths = [Path(str(value).strip()).expanduser() for value in paths if str(value).strip()]
         self.rows = []
         self.channels = []
         self.loaded_signature = None
@@ -273,6 +292,27 @@ class AnalysisForm:
         if not segmentation or not signals:
             raise ValueError("In Channel roles, tick at least one segmentation channel and one measured puncta channel.")
         return segmentation, signals
+
+    def restore(self, snapshot):
+        """Restore edits when the same loaded channels' form is redisplayed."""
+        if snapshot["sources"] != self.picker.metadata or len(snapshot["roles"]) != len(self.rows):
+            raise ValueError("Saved settings belong to different input channels.")
+        for row, saved in zip(self.rows, snapshot["roles"]):
+            for name, value in saved.items():
+                row[name].value = value
+        self.nucleus.value = snapshot["nucleus"]
+        self.transfection.value = snapshot["transfection"]
+        for fields, values in [(self.segmentation, snapshot["segmentation"]), (self.options, snapshot["options"])]:
+            for name, value in values.items():
+                fields[name].value = value
+        for form, values in zip(self.thresholds, snapshot["detection"]):
+            for name, value in values.items():
+                form.fields[name].value = value
+        for form, key in [(self.nucleus_threshold, "nucleus_detection"), (self.transfection_threshold, "transfection_detection")]:
+            for name, value in snapshot[key].items():
+                form.fields[name].value = value
+        self.save_all_radial.value = snapshot["save_all_radial"]
+        self._refresh_optional()
 
 
 class ControlAssignment:

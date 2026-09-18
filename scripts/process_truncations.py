@@ -1,7 +1,7 @@
 """Measure cells and aggregates in multichannel titin-truncation images.
 
 Each immediate subfolder of ``DATA_DIR`` is one truncation condition. TIFF
-channels are ordered as nucleus, membrane marker, and aggregate/transfection.
+channels are ordered as nucleus, aggregate/transfection, and membrane marker.
 This workflow does not calculate radial distributions.
 """
 

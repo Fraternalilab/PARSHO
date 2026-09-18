@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Check declared dependency compatibility
+        run: python -m pip check
+      - name: Run CPU tests without model downloads
+        run: python -m pytest -q
+      - name: Build distributable package
+        run: python -m build

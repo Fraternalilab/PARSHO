@@ -27,6 +27,8 @@ def load_image(input_path: str | Path, scene: int = 0) -> np.ndarray:
     while multi-frame DICOM follows pydicom's documented array layout.
     """
     path = Path(input_path)
+    if not isinstance(scene, int) or isinstance(scene, bool) or scene < 0:
+        raise ValueError("scene must be a nonnegative integer (starting at 0)")
     if not path.is_file():
         raise FileNotFoundError(f"Image file does not exist: {path}")
 
@@ -43,7 +45,13 @@ def load_image(input_path: str | Path, scene: int = 0) -> np.ndarray:
             import tifffile
         except ImportError as error:
             raise ImportError("Reading TIFF images requires 'tifffile'") from error
-        return np.asarray(tifffile.imread(path))
+        with tifffile.TiffFile(path) as image:
+            if scene >= len(image.series):
+                raise ValueError(f"scene must be below {len(image.series)} for {path.name} (TIFF series)")
+            return np.asarray(image.series[scene].asarray())
+
+    if scene and suffix not in MICROSCOPY_EXTENSIONS:
+        raise ValueError("Scene selection is supported for TIFF and vendor containers only")
 
     if suffix in RASTER_EXTENSIONS:
         try:
@@ -95,60 +103,45 @@ def _load_microscopy_image(path: Path, scene: int) -> np.ndarray:
         raise ValueError(f"Could not read microscopy image {path}: {error}") from error
 
 
+def load_field_channels(input_path, *, scene=0, axes="", time=0, z_mode="maximum", z=0):
+    """Return raw 2-D channels and source metadata for one field.
+
+    This is the same metadata-aware loader used by Colab. Select one time
+    point before projecting Z. Indices start at zero. Unknown stack axes
+    require an explicit order such as CYX, ZYX or TCZYX.
+    """
+    from parsho.single_image import load_field_channels as load_field
+
+    return load_field(input_path, scene=scene, axes=axes, time=time, z_mode=z_mode, z=z)
+
+
 def extract_channels(
     input_path: str | Path,
     normalize: bool = True,
     scene: int = 0,
+    *,
+    axes: str = "",
+    time: int = 0,
+    z_mode: str = "maximum",
+    z: int = 0,
 ) -> list[np.ndarray]:
-    """Extract channels from any supported image, optionally normalizing them.
+    """Return channels from the same 2-D field selection used by Colab.
 
-    When ``normalize`` is true, each channel is independently contrast-stretched
-    using ImageJ-style auto brightness/contrast and returned as ``uint8``. Set
-    it to false to preserve the original values for quantitative measurements.
-
-    Parameters
-    ----------
-    input_path : Path to a supported image file.
-    scene : Zero-based image/series index for microscopy containers.
-
-    Returns
-    -------
-    List of channel arrays. Normalized channels are ``uint8``; raw channels
-    preserve the TIFF dtype.
+    For measurements use normalize=False; the historical default True
+    contrast-stretches each channel to uint8 for display. Time is selected
+    before Z projection and is never flattened into depth. Ambiguous TIFF
+    stacks must specify axes. Use load_field_channels for source metadata.
     """
-    img = load_image(input_path, scene=scene)
-
-    ndim = img.ndim
-    if ndim == 2:
-        channels = [img]
-    elif ndim == 3:
-        d0, d1, d2 = img.shape
-        if d2 in (1, 2, 3, 4) and d2 <= min(d0, d1):
-            channels = [img[:, :, c] for c in range(d2)]
-        else:
-            channels = [img[c] for c in range(d0)]
-    elif ndim == 4:
-        channels = [img[c] for c in range(img.shape[0])]
-    elif ndim == 5:
-        time_points, channel_count, z_slices, height, width = img.shape
-        channels = [
-            img[:, channel].reshape(time_points * z_slices, height, width)
-            for channel in range(channel_count)
-        ]
-    else:
-        raise ValueError(f"Unsupported array shape: {img.shape}")
-
+    channels, _ = load_field_channels(
+        input_path, scene=scene, axes=axes, time=time, z_mode=z_mode, z=z
+    )
     if not normalize:
         return channels
-
     normalized = []
-    for index, channel in enumerate(channels):
+    for channel in channels:
         channel = channel.astype(np.float32)
         min_val, max_val = imagej_auto(channel, saturate_pct=0.35)
-        result = apply_window(channel, min_val, max_val)
-        print(f"ch{index}: shape={channel.shape}, window={min_val} → {max_val}")
-        normalized.append(result)
-
+        normalized.append(apply_window(channel, min_val, max_val))
     return normalized
 
 

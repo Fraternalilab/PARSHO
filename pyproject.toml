@@ -7,7 +7,7 @@ name = "parsho"
 version = "0.1.0"
 description = "Shape-adapted radial analysis of fluorescence puncta in segmented cells"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
@@ -24,14 +24,13 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
-    "cellpose",
+    "cellpose>=4,<5",
     "matplotlib>=3.7",
     "numpy>=1.24",
     "scikit-image>=0.26",
@@ -50,6 +49,9 @@ tutorial = [
 dev = [
     "build",
     "pytest",
+    "nbformat",
+    "ipywidgets>=8,<9",
+    "pandas",
 ]
 microscopy-io = [
     "bioio>=3.3",
