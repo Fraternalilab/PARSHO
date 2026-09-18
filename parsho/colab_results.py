@@ -11,7 +11,7 @@ from skimage.segmentation import find_boundaries
 
 from parsho.plotting import plot_radial_distribution
 from parsho.single_image import CELL_COLUMNS, FILTER_COLUMNS, OBJECT_COLUMNS, RADIAL_COLUMNS
-from parsho.provenance import runtime_provenance
+
 
 
 OUTPUT_GUIDE = """PARSHO single-field results
@@ -107,7 +107,7 @@ def save_overlay(path, image, cells, nucleus=None, aggregates=None, retained=Non
 
 def export_field_result(output, result, signals, settings, *, nucleus=None, transfection=None,
                         segmentation_image=None, save_all_radial=True):
-    """Write tables, raw arrays, figures, provenance and an output guide."""
+    """Write tables, raw arrays, figures and an output guide."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     write_table(output / "cell_measurements.csv", result["cell_records"], CELL_COLUMNS)
@@ -168,12 +168,6 @@ def export_field_result(output, result, signals, settings, *, nucleus=None, tran
                             aggregate_area_pixels=sum(row["aggregate_area_pixels"] for row in records),
                             aggregate_intensity_sum=sum(row["aggregate_intensity_sum"] for row in records)))
     write_table(output / "summary.csv", summary, list(summary[0]))
-    provenance = dict(settings, signal_exports=signal_exports, effective_thresholds=threshold_metadata,
-                      actual_radial_center=result["center"], detection_settings=result["detection_settings"])
-    provenance["analysis_options"] = result["analysis_options"]
-    if "provenance" not in provenance:
-        provenance["provenance"] = runtime_provenance()
-    with (output / "analysis_settings.json").open("w", encoding="utf-8") as stream:
-        json.dump(provenance, stream, indent=2, allow_nan=False)
+
     (output / "READ_ME.txt").write_text(OUTPUT_GUIDE, encoding="utf-8")
     return output

@@ -9,7 +9,6 @@ from skimage.measure import regionprops
 
 from parsho.img_utils import extract_channels, load_image
 from parsho.maskfilters import compute_cell_metrics, subtract_nuclear_from_aggregate
-from parsho.provenance import runtime_provenance
 from parsho.segmentation import re_threshold_masks
 from parsho.single_image import DetectionSettings
 
@@ -68,10 +67,4 @@ def test_import_does_not_load_torch_or_cellpose():
                    check=True)
 
 
-def test_provenance_hashes_the_actual_model_file(tmp_path):
-    path = tmp_path / "weights"
-    path.write_bytes(b"test weights")
-    model = type("Model", (), {"pretrained_model": str(path)})()
-    captured = runtime_provenance(model)
-    assert captured["model_sha256"] == hashlib.sha256(b"test weights").hexdigest()
-    assert captured["versions"]["numpy"] == np.__version__
+

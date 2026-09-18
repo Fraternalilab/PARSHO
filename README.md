@@ -370,8 +370,7 @@ See [the script guide](docs/scripts.md) for where to edit each workflow.
 
 For reproducibility, keep the raw inputs, channel assignments, masks,
 thresholds, filters, software/model versions and any scene/time/Z selections
-with your results. Colab and the convenience exporter record effective settings
-and provenance. For teaching scripts, also save the edited script/configuration
+with your results. For teaching scripts, also save the edited script/configuration
 and environment used. A model hash identifies its weights when available.
 The hosted notebook installs PARSHO from GitHub,
 so notebook and helper-module changes must be published together. For a fixed
