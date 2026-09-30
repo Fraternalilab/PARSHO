@@ -18,6 +18,6 @@ channels and reuses the model. These tests do not evaluate Cellpose's segmentati
 accuracy or require model downloads, a GPU, or example data. Vendor file readers
 and interactive notebook widgets are outside this suite's scope.
 
-The configuration keeps temporary files in `test/.tmp/` (recreated each run) and
-plotting caches in `test/.mplconfig/`. `-B` prevents Python bytecode writes, and
-pytest's cache is disabled. No analysis output is written outside `test/`.
+The configuration keeps temporary files in `tests/.tmp/` (recreated each run) and
+plotting caches in `tests/.mplconfig/`. `-B` prevents Python bytecode writes, and
+pytest's cache is disabled. No analysis output is written outside `tests/`.

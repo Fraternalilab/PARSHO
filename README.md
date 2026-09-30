@@ -1,9 +1,8 @@
 # PARSHO
 
-PARSHO measures fluorescent aggregates and puncta within segmented cells,
-including autophagy markers and RNA signals. It reports cell and punctum
-morphology, signal intensity, and where puncta lie between the cell or nucleus
-centre and the cell boundary.
+**PARSHO** is a user-friendly computational toolkit for reproducible, high-throughput analysis of fluorescent puncta in microscopy images. It combines robust cell segmentation with flexible support for external masks and reference-guided segmentation, enabling adaptable analysis across diverse imaging conditions. PARSHO provides comprehensive quantitative metrics through an accessible plug-and-play workflow, reducing reliance on manual analysis and improving reproducibility and scalability.
+
+![PARSHO workflow](assets/Pipeline_presubmission_image.png)
 
 ## Choose your starting point
 
