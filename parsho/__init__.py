@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
+from parsho.analysis import Analysis, analyze
 from parsho.img_utils import extract_channels, load_image, load_mask_npy
 from parsho.distribution import (
     AggregateDistribution,
@@ -23,6 +24,8 @@ from parsho.single_image import (
 
 __all__ = [
     "__version__",
+    "Analysis",
+    "analyze",
     "DetectionSettings",
     "analyze_field",
     "combine_segmentation_channels",

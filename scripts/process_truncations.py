@@ -2,6 +2,8 @@
 
 Each immediate subfolder of ``DATA_DIR`` is one truncation condition. TIFF
 channels are ordered as nucleus, aggregate/transfection, and membrane marker.
+Two multichannel images in ``DATA_DIR`` provide positive (aggregate) and
+negative (diffuse) examples used to calibrate one aggregate threshold.
 This workflow does not calculate radial distributions.
 """
 
@@ -26,17 +28,27 @@ from parsho.plotting import (
     plot_aggregate_channel_color_labelled,
     plot_segmentation_result,
 )
-from parsho.segmentation import extract_masks
+from parsho.segmentation import (
+    extract_masks,
+    find_optimal_threshold,
+    re_threshold_masks,
+)
 
 
 # Replace this with the directory containing the condition subdirectories.
-DATA_DIR = Path("path/to/your/data")
+DATA_DIR = Path("/your/path/")
 RESULTS_DIR = DATA_DIR / "results"
 INSPECTION_DIR = RESULTS_DIR / "inspection_images"
 CELL_CSV = RESULTS_DIR / "final_data.csv"
 
+# These root-level multichannel images calibrate aggregate detection and are
+# not included in the condition-folder batch analysis.
+POSITIVE_EXAMPLE_NAME = "2025.06.10_D4_1-1_aggregate.tif"
+NEGATIVE_EXAMPLE_NAME = "2025.06.10_B2_1-1_diffuse.tif"
+
 NUCLEUS_MIN_SIZE = 5
 AGGREGATE_MIN_SIZE = 2
+TRANSFECTION_MIN_SIZE = 2
 REMOVE_NUCLEAR_SIGNAL_FROM_AGGREGATES = True
 
 CELLPOSE_PARAMETERS = {
@@ -49,6 +61,21 @@ CELLPOSE_PARAMETERS = {
 }
 
 IMAGE_EXTENSIONS = {".tif", ".tiff"}
+
+
+def load_multichannel_image(image_path: Path) -> tuple[np.ndarray, ...]:
+    """Load the nucleus, aggregate/transfection and cell channels."""
+    if not image_path.is_file():
+        raise FileNotFoundError(f"Image file does not exist: {image_path}")
+    if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+        raise ValueError(f"Expected a TIFF image, received: {image_path}")
+
+    channels = extract_channels(image_path, normalize=False)
+    if len(channels) < 3:
+        raise ValueError(
+            f"{image_path} contains {len(channels)} channels; three are required"
+        )
+    return tuple(channels[:3])
 
 
 def image_files_by_folder(data_dir: Path) -> list[tuple[Path, list[Path]]]:
@@ -71,6 +98,72 @@ def image_files_by_folder(data_dir: Path) -> list[tuple[Path, list[Path]]]:
     if not grouped_files:
         raise FileNotFoundError(f"No TIFF images found below {data_dir}")
     return grouped_files
+
+
+def calibrate_aggregate_threshold(model) -> float:
+    """Calibrate a fixed aggregate threshold from two example images."""
+    positive_nuclei, positive_aggregate, positive_cell = load_multichannel_image(
+        DATA_DIR / POSITIVE_EXAMPLE_NAME
+    )
+    negative_nuclei, negative_aggregate, negative_cell = load_multichannel_image(
+        DATA_DIR / NEGATIVE_EXAMPLE_NAME
+    )
+
+    positive_masks, _, _ = model.eval(positive_cell, **CELLPOSE_PARAMETERS)
+    negative_masks, _, _ = model.eval(negative_cell, **CELLPOSE_PARAMETERS)
+    if not np.any(positive_masks):
+        raise ValueError(
+            f"No cells detected in positive example {POSITIVE_EXAMPLE_NAME}"
+        )
+    if not np.any(negative_masks):
+        raise ValueError(
+            f"No cells detected in negative example {NEGATIVE_EXAMPLE_NAME}"
+        )
+
+    _, _, positive_threshold = extract_masks(
+        aggregate_channel=positive_aggregate,
+        cell_masks=positive_masks,
+        method="otsu",
+        min_size_px=AGGREGATE_MIN_SIZE,
+    )
+    _, _, negative_threshold = extract_masks(
+        aggregate_channel=negative_aggregate,
+        cell_masks=negative_masks,
+        method="otsu",
+        min_size_px=AGGREGATE_MIN_SIZE,
+    )
+
+    if REMOVE_NUCLEAR_SIGNAL_FROM_AGGREGATES:
+        positive_nuc_binary, _, _ = extract_masks(
+            aggregate_channel=positive_nuclei,
+            cell_masks=positive_masks,
+            method="otsu",
+            min_size_px=NUCLEUS_MIN_SIZE,
+        )
+        negative_nuc_binary, _, _ = extract_masks(
+            aggregate_channel=negative_nuclei,
+            cell_masks=negative_masks,
+            method="otsu",
+            min_size_px=NUCLEUS_MIN_SIZE,
+        )
+    else:
+        positive_nuc_binary = np.zeros_like(positive_masks, dtype=bool)
+        negative_nuc_binary = np.zeros_like(negative_masks, dtype=bool)
+
+    threshold, positive_pixels = find_optimal_threshold(
+        positive_aggregate,
+        positive_masks,
+        negative_aggregate,
+        negative_masks,
+        positive_nuc_binary,
+        negative_nuc_binary,
+        t_min=negative_threshold,
+        t_max=positive_threshold,
+        min_size_px=AGGREGATE_MIN_SIZE,
+    )
+    print(f"Calibrated aggregate threshold: {threshold}")
+    print(f"Positive-example pixels retained at threshold: {positive_pixels}")
+    return float(threshold)
 
 
 def save_inspection_figures(
@@ -117,7 +210,7 @@ def save_inspection_figures(
 
 
 def main() -> None:
-    """Process each truncation folder and write one combined cell table."""
+    """Calibrate on two examples, then process every truncation folder."""
     grouped_files = image_files_by_folder(DATA_DIR)
     total_images = sum(len(image_files) for _, image_files in grouped_files)
 
@@ -129,6 +222,7 @@ def main() -> None:
         "truncation folders"
     )
     model = models.CellposeModel(gpu=gpu_available)
+    aggregate_threshold = calibrate_aggregate_threshold(model)
 
     cell_records = []
     processed_image_count = 0
@@ -150,13 +244,9 @@ def main() -> None:
                 f"{image_path.name}"
             )
 
-            channels = extract_channels(image_path, normalize=False)
-            if len(channels) < 3:
-                raise ValueError(
-                    f"{image_path} contains {len(channels)} channels; "
-                    "three are required"
-                )
-            nuclei_channel, aggregate_channel, cell_channel = channels[:3]
+            nuclei_channel, aggregate_channel, cell_channel = (
+                load_multichannel_image(image_path)
+            )
 
             cell_masks, cell_flows, _ = model.eval(
                 cell_channel, **CELLPOSE_PARAMETERS
@@ -171,13 +261,18 @@ def main() -> None:
                 method="otsu",
                 min_size_px=NUCLEUS_MIN_SIZE,
             )
-            agg_binary, agg_labels, _ = extract_masks(
+            agg_binary, agg_labels = re_threshold_masks(
+                aggregate_channel=aggregate_channel,
+                cell_masks=cell_masks,
+                min_size_px=AGGREGATE_MIN_SIZE,
+                thresh=aggregate_threshold,
+            )
+            _, transfection_labels, _ = extract_masks(
                 aggregate_channel=aggregate_channel,
                 cell_masks=cell_masks,
                 method="otsu",
-                min_size_px=AGGREGATE_MIN_SIZE,
+                min_size_px=TRANSFECTION_MIN_SIZE,
             )
-            transfection_labels = agg_labels
             if REMOVE_NUCLEAR_SIGNAL_FROM_AGGREGATES:
                 agg_binary, agg_labels = subtract_nuclear_from_aggregate(
                     agg_binary, agg_labels, nuc_binary

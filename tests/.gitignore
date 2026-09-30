@@ -1,0 +1,4 @@
+.tmp/
+.mplconfig/
+.pytest_cache/
+__pycache__/

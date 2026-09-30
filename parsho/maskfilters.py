@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.ndimage import binary_erosion, binary_fill_holes
 from skimage.measure import regionprops
 
 
@@ -57,19 +58,36 @@ def subtract_nuclear_from_aggregate(
     return agg_binary, label(agg_labels)
 
 
+def cell_outlines(cell_masks: np.ndarray) -> np.ndarray:
+    """Return external cell contours, matching the notebook Cellpose outlines.
+
+    Filling holes before erosion excludes internal holes from the contour.
+    Processing each labelled region separately preserves touching-cell borders
+    and outlines at the edge of the image. Cellpose/torch is not required.
+    """
+    outlines = np.zeros(cell_masks.shape, dtype=bool)
+    for region in regionprops(cell_masks):
+        filled = binary_fill_holes(region.image)
+        outlines[region.slice] |= region.image & ~binary_erosion(filled, border_value=0)
+    return outlines
+
+
 def build_overlay(
     cell_masks: np.ndarray,
     nuc_labels: np.ndarray,
     agg_labels: np.ndarray,
-    outlines: np.ndarray,
+    outlines: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compose a categorical overlay image.
 
     Values identify background (0), cell interior (1), cell outline (2),
     nucleus (3), and aggregate (4). Later assignments take precedence in
-    overlapping regions.
+    overlapping regions. If outlines is omitted, external cell contours are
+    calculated with cell_outlines().
     """
-    overlay = np.zeros_like(agg_labels)
+    if outlines is None:
+        outlines = cell_outlines(cell_masks)
+    overlay = np.zeros(cell_masks.shape, dtype=np.uint8)
     overlay[cell_masks > 0] = 1
     overlay[outlines > 0] = 2
     overlay[nuc_labels > 0] = 3

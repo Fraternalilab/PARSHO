@@ -226,7 +226,7 @@ def analyze_field(
 
     Returns:
         Dictionary of cell/object/radial/filter records, label arrays, intensities,
-        thresholds, radial distributions and effective settings. See docs/api.md.
+        thresholds, radial distributions and effective settings. See docs/analysis.md.
     """
     cells = np.asarray(cells)
     if cells.ndim != 2 or not np.issubdtype(cells.dtype, np.integer) or (cells < 0).any():
@@ -264,9 +264,9 @@ def analyze_field(
     trans_binary = np.zeros(cells.shape, dtype=bool)
     if transfection is not None:
         trans_binary, _, trans_threshold = detect_signal(transfection, cells, transfection_detection or DetectionSettings())
-    signal_masks, thresholds = {}, {}
+    signal_masks, thresholded_signal_masks, thresholds = {}, {}, {}
     for name, image in signals.items():
-        binary, _, thresholds[name] = detect_signal(image, cells, detection[name])
+        binary, thresholded_signal_masks[name], thresholds[name] = detect_signal(image, cells, detection[name])
         if remove_nuclear:
             binary &= ~nuc_binary
         # Objects touching across cell boundaries remain separate instances.
@@ -362,7 +362,8 @@ def analyze_field(
                             transfection_detection=asdict(transfection_detection or DetectionSettings()))
     return dict(cells=cells, nucleus_labels=nuc_labels, transfection_mask=trans_binary,
                 analysis_options=analysis_options,
-                signal_masks=signal_masks, intensities=intensities, retained_labels=retained,
+                signal_masks=signal_masks, thresholded_signal_masks=thresholded_signal_masks,
+                intensities=intensities, retained_labels=retained,
                 cell_records=cell_records, object_records=objects, radial_records=radial_records,
                 filter_records=audit, distributions=distributions, center=center,
                 thresholds=dict(signals=thresholds, nucleus=nuc_threshold, transfection=trans_threshold),

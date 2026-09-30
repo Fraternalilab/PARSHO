@@ -7,17 +7,20 @@ centre and the cell boundary.
 
 ## Choose your starting point
 
-| What you want to do | Start here | What you need |
-| --- | --- | --- |
-| Analyse your images without writing code | [Open PARSHO in Google Colab](https://colab.research.google.com/github/Fraternalilab/PARSHO/blob/main/notebooks/PARSHO_Colab.ipynb) | A browser and your image files; no local Python installation |
-| Learn the workflow on supplied data | [Local notebook tutorials](#local-notebook-tutorials) | A local environment and basic notebook familiarity |
-| Use existing cell segmentations or integrate PARSHO into Python | [Python API and external masks](#python-api-and-external-masks) | Aligned image arrays and integer cell labels |
-| Process many images with an experiment-specific workflow | [Batch scripts](#batch-scripts) | Python familiarity and the expected dataset layout |
-
 New to image analysis? Start with Colab. A *channel* is an image of one stain
 or signal. A *cell mask* identifies the pixels belonging to each cell.
 *Segmentation* finds those cell boundaries; *thresholding* selects bright
 pixels within them as candidate puncta. Inspect both before interpreting results.
+Want to process data in batches using the standard pipeline? Check the [Simple analysis wrapper](#simple-python-analysis) for how to run the package with as little parameters as possible.
+
+| What you want to do | Start here | What you need |
+| --- | --- | --- |
+| Analyse your images without writing code | [Open PARSHO in Google Colab](https://colab.research.google.com/github/Fraternalilab/PARSHO/blob/main/notebooks/PARSHO_Colab.ipynb) | A browser and your image files; no local Python installation |
+| Run the common workflow in Batch with a few Python parameters | [Simple analysis wrapper](#simple-python-analysis) | Channel files or arrays; defaults cover segmentation, thresholding and radial analysis |
+| Learn the workflow on supplied data | [Local notebook tutorials](#local-notebook-tutorials) | A local environment and basic notebook familiarity |
+| Use existing cell segmentations or integrate PARSHO into Python | [Python API and external masks](#python-api-and-external-masks) | Aligned image arrays and integer cell labels |
+
+A more detailed documentation can be found at [Documentation](docs/analysis.md).
 
 ## No-code analysis in Google Colab
 
@@ -69,8 +72,8 @@ the cell centre. With it, you can choose the nucleus or cell centre.
 
 Nuclear exclusion is off by default in Colab. When enabled, it removes nuclear
 pixels from both the puncta mask and analysed signal intensity. Original raw
-cell-intensity totals remain available. The nucleus filter is a separate
-choice: it controls which cells are retained, not which pixels are measured.
+cell-intensity totals remain available. The nucleus filter is a separate different
+choice: it controls which cells are retained based on them having a nucleus, not which pixels are measured.
 
 Radial sections adapt to the cell shape rather than forming circular rings.
 Bin 0 is closest to the selected centre; later bins approach the boundary.
@@ -84,25 +87,24 @@ or external-mask loading. Those last two workflows have separate entry points
 below. The local tutorials and scripts deliberately spell out each step for
 learning and adaptation; their nucleus requirements and defaults differ.
 
-### What is in the download?
+### What is in the downloaded results?
 
 | Output | Contents |
 | --- | --- |
-| `summary.csv` | Cell/punctum counts, punctum area and intensity totals per signal |
-| `cell_measurements.csv` | One row per retained cell per signal: morphology, areas, counts, intensities and radial inclusion |
-| `aggregate_measurements.csv` | One row per punctum: parent cell, size, shape, position and intensity |
-| `cell_filtering.csv` | Every segmented cell, retention status and exclusion reasons |
-| `radial_distribution.csv` | One row per cell, signal and radial bin |
-| `cell_masks.tif`, `cell_masks.npy` | Integer cell labels matching the Colab tables and figures |
-| `signal_XX/` | Selected/projected signal, puncta masks, analysed intensity, overlays and optional per-cell radial figures |
-| `analysis_settings.json` | Channel/file assignments, settings, effective thresholds and software versions |
-| `READ_ME.txt` | Measurement definitions, units and missing-data conventions |
+| `final_data.csv` | One row per retained cell and signal: morphology, counts, areas and intensities |
+| `radial_distribution.csv` | Per-cell radial measurements, only when radial analysis is enabled |
+| `inspection_images/` | Segmentation, nuclear/puncta masks, all-cell and retained-cell overlays, and optional radial figures |
 
-Nucleus and transfection images/masks are included when supplied. Areas are
-pixel counts; entering a square-pixel width adds square-micrometre columns.
-Intensity remains in the input image's units. Blank nuclear measurements mean
-“no nucleus channel supplied”; zero means “supplied but none detected.”
+Colab and the Python wrapper follow the same notebook layout. For multiple
+signals, puncta figures are grouped in `inspection_images/signal_01/`,
+`signal_02/`, etc., in selected channel order. The labelled retained-cell view
+is named `transfected_cells.png`, matching the examples. Original cell IDs link
+the figures and tables. No README, settings JSON or raw-array copies are added.
+See [Results and files](docs/analysis.md#results-and-files) for the full layout.
 
+Areas are pixel counts; entering a square-pixel width adds square-micrometre
+columns. Intensities remain in the input image's units. Nuclear measurements
+are blank when no nucleus channel was supplied.
 
 ## Local installation
 
@@ -137,8 +139,8 @@ pandas and widgets. Select a notebook kernel using this same environment.
 
 The [environment.yml](environment.yml) uses Python 3.12 and can also be used
 with `conda env create -f environment.yml`. The package requires Python 3.11
-or newer and Cellpose 4.x. Exported settings record the actual installed
-versions, source revision when available, and model identity/hash when supplied.
+or newer and Cellpose 4.x. The Python wrapper retains settings and installed
+versions in its returned result.
 
 ### Existing Python environment
 
@@ -157,6 +159,55 @@ Use `python -m pip install .` for a non-editable core installation.
 Cellpose is currently a required package dependency even when you use existing
 masks and do not run segmentation. A GPU is useful for Cellpose but is not
 required for downstream PARSHO measurements.
+
+## Simple Python analysis
+
+Configure an `Analysis` object, then pass your channel files to `.run()`.
+It handles loading, Cellpose segmentation, thresholding, filtering, measurements
+and export. Reuse the object for more samples to keep the model loaded.
+
+```python
+from parsho import Analysis
+
+analysis = Analysis(
+    segmentation_channels="cells",
+    signal_channels="titin",
+    nucleus_channel="nuclei",
+    detection="otsu",
+    require_nucleus=True,
+    remove_nuclear=True,
+    radial=True,
+)
+result = analysis.run(
+    {"cells": "C3-sample.tif", "titin": "C2-sample.tif", "nuclei": "C1-sample.tif"},
+    output_dir="results/sample",
+    save_intermediates=True,
+)
+print("Cells measured:", len(result["retained_labels"]))
+```
+
+Otsu detection, automatic GPU selection and ten radial bins are defaults.
+A nucleus channel is optional; omit it and `require_nucleus`/`remove_nuclear`
+when unavailable. Set `radial=False` to skip radial analysis. Omit `output_dir`
+to return results without writing files, or set `save_intermediates=False` for
+CSV tables only. The convenience function
+`analyze()` accepts the same analysis parameters for a single call.
+
+The [analysis guide](docs/analysis.md) covers defaults, threshold choices,
+multichannel inputs, external masks and control calibration. The
+[public API guide](docs/api.md) documents the individual functions used in the
+notebooks, with their inputs, outputs and examples.
+
+For the bundled titin example, edit the paths, `SAMPLE_NAMES`, and parameters in
+[scripts/titin_aggregates_simple.py](scripts/titin_aggregates_simple.py), then run:
+
+```bash
+python scripts/titin_aggregates_simple.py
+```
+
+Set `USE_CONTROLS=False` for Otsu per sample, `RADIAL_ANALYSIS=False` to skip
+radial analysis, or add filenames to `SAMPLE_NAMES` for a batch. Use a new
+`RESULTS_DIR` for each run.
 
 ## Local notebook tutorials
 
@@ -181,7 +232,7 @@ before that section if you only want the single-image walkthrough.
 | [External cell masks](notebooks/parsho_external_cell_masks_tutorial.ipynb) | Save/reload labelled masks and skip Cellpose inference | Bundled TIFFs; creates illustrative masks, not validated biological segmentations |
 | [Autophagy example](notebooks/parsho_autophagy_analysis_example.ipynb) | Combined-channel segmentation and autophagy-puncta radial analysis | Supply matching C1/C2/C3 images and set `DATA_DIR` |
 | [RNA-scope example](notebooks/parsho_rna_scope_example.ipynb) | Separate TRPV1 and TRPA1 measurements and radial profiles | Supply C1 nuclei, C2 TRPV1, C3 TRPA1, C4 brightfield; set `DATA_DIR` |
-| [Colab notebook](notebooks/PARSHO_Colab.ipynb) | Guided form-based analysis | Run in Google Colab; upload your files |
+
 
 Experiment-specific datasets other than the bundled aggregate TIFFs must be
 supplied separately. They can be obtained from [ref]
@@ -202,29 +253,6 @@ optional readers. In an existing local installation, add them with
 LOF reading uses the BioIO Bio-Formats integration. NumPy `.npy` is a mask
 format handled separately by `load_mask_npy()`, not an image-reader format.
 Use original microscopy images for quantitative intensity work; JPEG is lossy.
-
-### Shapes, channel order and intensity
-
-All channels and masks passed to the 2-D analysis must have the same height,
-width and spatial alignment. Matching dimensions alone do not prove alignment.
-
-- `load_image(path, scene=0)` returns raw pixel values. TIFF/raster layouts
-  follow their readers; vendor containers return `TCZYX` (time, channel,
-  depth, height, width). `scene` selects a TIFF series or vendor scene.
-- `load_field_channels()`, exported from `parsho`, `img_utils` and
-  `single_image`, reads dimension metadata, selects a time point, then
-  selects/projects Z and returns raw 2-D channels plus metadata. Colab and the convenience
-  channel extractor use this loader; the teaching examples also show direct
-  raw-image loading. Ambiguous stacks require explicit axes.
-- `extract_channels(path, normalize=False, ...)` delegates to the same loader
-  and accepts the same scene/time/Z options. Its legacy default
-  `normalize=True` contrast-stretches channels to `uint8` for display;
-  use `False` for quantitative measurements. It no longer flattens time and Z
-  into channels. See [migration notes](CHANGELOG.md) before rerunning older code.
-
-Python channel, scene, time and Z indices start at **0**. Colab's corresponding
-form selections start at **1**. A Z maximum projection is a 2-D representation
-of the stack, not a 3-D measurement.
 
 ## Python API and external masks
 
@@ -265,13 +293,12 @@ export_field_result(
     data_dir / "parsho_results",
     result,
     signals,
-    settings={"input_image": "aggregate.tif", "cell_mask": "cell_masks.npy", **options},
 )
 ```
 
 Choose a **new** output directory for each export: `export_field_result()`
-rejects an existing directory. It writes tables, arrays, figures and an output
-guide; ZIP creation and browser downloads are handled by the Colab notebook.
+rejects an existing directory. It writes `final_data.csv`, optional radial data,
+and `inspection_images/`; Colab handles ZIP creation and browser downloads.
 
 To include nuclei, pass an aligned `nucleus` image to `analyze_field()`.
 Set `remove_nuclear=True` to exclude nuclear pixels, and choose
@@ -315,102 +342,26 @@ See the [API guide](docs/api.md) for parameter defaults, return values,
 measurement definitions and compatibility names. The lower-level aggregate
 shape averaging now handles cells with no background pixels correctly.
 
-## Batch scripts
-
-The scripts are readable, experiment-specific Python workflows. Each file
-shows its own input layout, channel assignments, Cellpose settings, thresholding,
-filters, measurements, plots and save logic. They are teaching examples to
-read and adapt. From the repository root, edit the chosen script's top configuration:
-set `DATA_DIR = Path("path/to/your/data")`, check its channel mapping, thresholds,
-Cellpose parameters and nuclear-exclusion settings, then run, for example:
-
-```bash
-python scripts/process_autophagy.py
-```
-
-Use the complete local environment or install the `tutorial` extra for pandas.
-Test a representative image interactively before running a dataset. These
-examples expect nuclear data; Colab's optional-nucleus behaviour is
-not automatically applied to them.
-
-| Script | Expected inputs | Analysis |
-| --- | --- | --- |
-| [process_autophagy.py](scripts/process_autophagy.py) | C1 nuclei, C2 puncta, C3 cell-channel TIFFs sharing a filename suffix | Cell measurements and nucleus-centred radial profiles |
-| [process_titin_aggregates.py](scripts/process_titin_aggregates.py) | C1/C2/C3 TIFFs plus `positive_control.tif` and `negative_control.tif` sets | Control-calibrated aggregates and radial profiles |
-| [process_rna-scope.py](scripts/process_rna-scope.py) | C1 nuclei, C2 TRPV1, C3 TRPA1, C4 brightfield TIFFs | Separate measurements and radial tables for both RNA signals |
-| [process_truncations.py](scripts/process_truncations.py) | Condition subdirectories containing multichannel TIFFs | Cell/punctum morphology; no radial analysis |
-
-The truncation example uses **nucleus, aggregate, cell** channel order.
-Confirm it against your acquisition metadata before running. 
-
-The first four scripts discover only `.tif`/`.tiff` files, including OME-TIFF
-suffixes. Broader package reader support does not change these discovery rules.
-
-Outputs are written beneath `DATA_DIR`: normally `results/`, or
-`tutorial_results/` for RNA-scope. Scripts write `final_data.csv`,
-inspection figures and, where implemented, radial CSVs. Their outputs follow
-the analysis shown in each script, with schemas distinct from Colab.
-Repeated runs reuse output paths;
-set a fresh `RESULTS_DIR` when preserving previous analyses.
-
-See [the script guide](docs/scripts.md) for where to edit each workflow.
-
-## Troubleshooting and reproducibility
-
-| Symptom | What to check |
-| --- | --- |
-| Colab forms or imports are missing | Run both setup cells in the current session; if prompted, restart the runtime and rerun imports |
-| Notebook cannot find example data | Launch the aggregate tutorial from `notebooks/`; inspect its configured paths |
-| “Ambiguous axes” or wrong channel count | Check acquisition/export dimension order; use the field loader's axes, series, time and Z controls |
-| Channels/masks have different shapes | Select aligned files from the same field and matching planes; inspect registration |
-| No cells, no retained cells or empty radial tables | Inspect outlines and signal masks, then filtering decisions; nucleus-centred profiles require detected nuclear pixels |
-| Radial intensity differs from total raw cell intensity | Radial analysis uses detected puncta, with any requested nuclear exclusion |
-| Output directory already exists | Choose a new directory for Colab/API exports; teaching scripts reuse their configured paths |
-| Download does not start | Retry the download button or use the Files panel; download before the Colab session ends |
-
-For reproducibility, keep the raw inputs, channel assignments, masks,
-thresholds, filters, software/model versions and any scene/time/Z selections
-with your results. For teaching scripts, also save the edited script/configuration
-and environment used. A model hash identifies its weights when available.
-The hosted notebook installs PARSHO from GitHub,
-so notebook and helper-module changes must be published together. For a fixed
-analysis, retain the repository revision and environment versions you used.
-
-For development checks, install the test dependencies from the repository root:
-
-```bash
-python -m pip install -e '.[dev,tutorial]'
-python -m pytest -q
-```
-
-Colab widget tests require the notebook dependencies; their upload/download
-bridge and model inference are simulated. They do not replace a browser check
-of the hosted notebook. See [validation and browser acceptance](docs/validation.md)
-for the release checklist and remaining verification limits. Report problems through
-[GitHub Issues](https://github.com/Fraternalilab/PARSHO/issues), including the
-workflow, input shape/format, settings and error message.
-
 ## Package layout
 
 ```text
 parsho/
-├── single_image.py   # Field loading and analysis with optional nuclei
-├── colab_ui.py       # Optional upload, channel-role and settings widgets
-├── colab_results.py  # Single-field tables, arrays, figures and output guide
-├── img_utils.py      # General image readers, channel extraction and masks
-├── segmentation.py   # Thresholding and connected-component extraction
-├── maskfilters.py    # Filtering, overlays and morphology
-├── distribution.py   # Cell- and nucleus-centred radial measurements
-├── plotting.py       # Inspection and radial figures
-└── utils.py          # Radial records and CSV serialization
+├── __init__.py        # Public package exports and version
+├── analysis.py        # High-level Analysis wrapper and one-call workflow
+├── single_image.py    # Field loading and analysis with optional nuclei
+├── segmentation.py    # Thresholding and connected-component extraction
+├── maskfilters.py     # Filtering, overlays and morphology
+├── distribution.py    # Cell- and nucleus-centred radial measurements
+├── img_utils.py       # General image readers, channel extraction and masks
+├── plotting.py        # Inspection and radial figures
+├── colab_ui.py        # Optional upload, channel-role and settings widgets
+├── colab_results.py   # Notebook-style CSV tables and inspection figures
+├── examples.py        # Example-data discovery and Colab demo download
+└── utils.py           # Radial records and CSV serialization
 ```
-
-## Attribution
-
-See [CITATION.cff](CITATION.cff) for software attribution and
-[datasets and citations]() for data-specific credits.
-Do not infer a dataset licence or publication from the software licence.
 
 ## License
 
 PARSHO is distributed under the MIT License. See [LICENSE](LICENSE).
+Datasets use din Parsho and their license can be found at [datasets and citations]().
+If you use PARSHO on your research we kindly ask you to cite [PARSHO]().

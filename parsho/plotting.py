@@ -2,7 +2,10 @@
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from pathlib import Path
 import numpy as np
+
+from parsho.maskfilters import cell_outlines
 
 from parsho.distribution import (
     AggregateDistribution,
@@ -10,117 +13,129 @@ from parsho.distribution import (
 )
 
 
-def save_figure(
-    fig,
-    path,
-    dpi=300,
-    compression="tiff_lzw",
-    bbox_inches="tight",
-    pad_inches=0.05,
-):
-    """
-    Save a matplotlib figure as a high-quality TIFF.
+IMAGE_FIGSIZE = (5, 5)
+IMAGE_DPI = 300
+OVERLAY_COLORS = ("black", "white", "grey", "blue", "red")
 
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        The figure to save.
-    path : str
-        Output path (should end with .tiff or .tif).
-    dpi : int
-        Resolution (300–600 for publications).
-    compression : str
-        TIFF compression ('tiff_lzw', 'tiff_deflate', or None).
-    bbox_inches : str
-        Cropping behavior.
-    pad_inches : float
-        Padding around the figure.
+
+def save_figure(
+    fig, path, dpi=300, compression="tiff_lzw", bbox_inches="tight", pad_inches=0.05,
+):
+    """Save and close a figure; apply TIFF compression only to TIFF files.
+
+    PNG and TIFF exports use the same layout, palette and resolution. Other
+    Matplotlib-supported extensions (e.g. PDF) are also accepted.
     """
-    fig.savefig(
-        path,
-        dpi=dpi,
-        pil_kwargs={"compression": compression},
-        bbox_inches=bbox_inches,
-        pad_inches=pad_inches,
-    )
+    options = {}
+    if Path(path).suffix.lower() in {".tif", ".tiff"} and compression is not None:
+        options["pil_kwargs"] = {"compression": compression}
+    fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches, pad_inches=pad_inches, **options)
     plt.close(fig)
 
 
-def plot_segmentation_result(img_cell, masks, flows, save_path=None):
-    """Display or save Cellpose segmentation output."""
-    from cellpose import plot
+def _segmentation_rgb(image, shape):
+    """Normalize display copies and resolve either CYX or YXC input."""
+    image = np.asarray(image)
+    if image.ndim == 2 and image.shape == shape:
+        image = image[..., None]
+    elif image.ndim == 3 and image.shape[:2] == shape:
+        pass
+    elif image.ndim == 3 and image.shape[1:] == shape:
+        image = np.moveaxis(image, 0, -1)
+    else:
+        raise ValueError("Segmentation image must match the 2-D cell masks (YX, YXC or CYX).")
+    if not 1 <= image.shape[-1] <= 3:
+        raise ValueError("Segmentation display supports one to three channels.")
+    rgb = np.zeros((*shape, 3), dtype=np.float32)
+    for index in range(image.shape[-1]):
+        plane = image[..., index].astype(np.float32)
+        low, high = np.percentile(plane, (1, 99))
+        if high > low:
+            rgb[..., index] = np.clip((plane - low) / (high - low), 0, 1)
+    if image.shape[-1] == 1:
+        rgb[:] = rgb[..., :1]
+    return rgb
 
-    fig = plt.figure(figsize=(12, 5))
-    plot.show_segmentation(fig, img_cell, masks, flows[0])
-    plt.tight_layout()
 
-    if save_path:
+def plot_segmentation_result(img_cell, masks, flows=None, save_path=None):
+    """Show the notebook's four-panel segmentation diagnostic.
+
+    Panels contain the input, red external outlines, coloured cell masks and
+    RGB Cellpose flows. Colours are deterministic for each original cell ID.
+    ``flows`` is the complete model.eval() flow list; omit it for external
+    masks. Its panel then states that flows are unavailable. No Cellpose import
+    is needed for plotting. Both CYX and YXC segmentation inputs are accepted.
+    """
+    masks = np.asarray(masks)
+    if masks.ndim != 2 or not np.issubdtype(masks.dtype, np.integer) or (masks < 0).any():
+        raise ValueError("Segmentation display needs 2-D nonnegative integer cell labels.")
+    rgb = _segmentation_rgb(img_cell, masks.shape)
+    outlined = rgb.copy()
+    outlined[cell_outlines(masks)] = (1, 0, 0)
+    # Assign colours by ID, independent of which other cells are displayed.
+    hsv = np.zeros_like(rgb)
+    hsv[..., 0] = np.mod(masks * 0.618033988749895, 1)
+    hsv[..., 1] = (masks > 0).astype(float)
+    hsv[..., 2] = np.clip(rgb.mean(axis=-1) * 1.5, 0, 1)
+    coloured = mcolors.hsv_to_rgb(hsv)
+    fig, axes = plt.subplots(1, 4, figsize=(12, 5), dpi=IMAGE_DPI)
+    for axis, image, title in zip(axes, (rgb, outlined, coloured),
+                                  ("original image", "predicted outlines", "predicted masks")):
+        axis.imshow(image, interpolation="nearest")
+        axis.set_title(title)
+        axis.axis("off")
+    flow_image = None if flows is None or len(flows) == 0 else flows[0]
+    if flow_image is None or np.size(flow_image) == 0:
+        axes[3].text(0.5, 0.5, "Flows unavailable", ha="center", va="center", transform=axes[3].transAxes)
+    else:
+        axes[3].imshow(flow_image, interpolation="nearest")
+    axes[3].set_title("predicted cell pose")
+    axes[3].axis("off")
+    fig.tight_layout()
+    if save_path is not None:
         save_figure(fig, save_path)
     else:
         plt.show()
 
 
 def plot_aggregate_channel(
-    img_agregates,
-    save_path=None,
-    colors=None,
-    cmap="gray",
-    dpi=300,
+    img_agregates, save_path=None, colors=None, cmap="gray", dpi=300, *, ax=None,
 ):
-    """Display or save an aggregate intensity image."""
-    fig, ax = plt.subplots(figsize=(5, 5))
+    """Show a raw signal or binary mask using the shared notebook image style.
 
-    ax.imshow(img_agregates, cmap=cmap)
-    ax.axis("off")  # clean look
-
-    plt.tight_layout(pad=0)
-
-    if save_path:
-        fig.savefig(
-            save_path,
-            dpi=dpi,
-            pil_kwargs={"compression": "tiff_lzw"},
-            bbox_inches="tight",
-            pad_inches=0,
-        )
-        plt.close(fig)
+    ``ax`` optionally draws into an existing figure, without calling show().
+    Boolean masks always use black=False, white=True, including empty/full masks.
+    """
+    own_figure = ax is None
+    if own_figure:
+        fig, ax = plt.subplots(figsize=IMAGE_FIGSIZE, dpi=dpi)
     else:
+        fig = ax.figure
+    image = np.asarray(img_agregates)
+    limits = {"vmin": 0, "vmax": 1} if image.dtype == bool else {}
+    ax.imshow(image, cmap=cmap, interpolation="nearest", **limits)
+    ax.axis("off")
+    if own_figure:
+        fig.tight_layout(pad=0)
+    if save_path is not None:
+        save_figure(fig, save_path, dpi=dpi, pad_inches=0)
+    elif own_figure:
         plt.show()
 
 
 def plot_aggregate_channel_color(
-    img_agregates,
-    save_path=None,
-    colors=None,
-    cmap=None,  # kept for compatibility
-    dpi=300,
+    img_agregates, save_path=None, colors=None, cmap=None, dpi=300,
 ):
-    """Display or save a categorical aggregate overlay."""
-    fig, ax = plt.subplots(figsize=(5, 5))
-
-    # Default discrete colors
-    if colors is None:
-        colors = ["black", "white", "grey", "blue", "red"]
-
-    cmap = mcolors.ListedColormap(colors)
-
-    # Extend boundaries to include 4
-    norm = mcolors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5], cmap.N)
-
-    ax.imshow(img_agregates, cmap=cmap, norm=norm)
+    """Show the shared black/white/grey/blue/red categorical mask overlay."""
+    fig, ax = plt.subplots(figsize=IMAGE_FIGSIZE, dpi=dpi)
+    palette = OVERLAY_COLORS if colors is None else colors
+    cmap = mcolors.ListedColormap(palette)
+    norm = mcolors.BoundaryNorm(np.arange(len(palette) + 1) - 0.5, cmap.N)
+    ax.imshow(img_agregates, cmap=cmap, norm=norm, interpolation="nearest")
     ax.axis("off")
-
-    plt.tight_layout(pad=0)
-
-    if save_path:
-        fig.savefig(
-            save_path,
-            dpi=dpi,
-            pil_kwargs={"compression": "tiff_lzw"},
-            bbox_inches="tight",
-            pad_inches=0,
-        )
-        plt.close(fig)
+    fig.tight_layout(pad=0)
+    if save_path is not None:
+        save_figure(fig, save_path, dpi=dpi, pad_inches=0)
     else:
         plt.show()
 
@@ -178,11 +193,11 @@ def plot_aggregate_channel_color_labelled(
     # Set the figure DPI at creation time too. Previously ``dpi`` was only
     # passed to ``savefig``, so interactive/notebook output rendered the text
     # at Matplotlib's (usually much lower) default DPI and then scaled it up.
-    fig, ax = plt.subplots(figsize=(5, 5), dpi=dpi)
+    fig, ax = plt.subplots(figsize=IMAGE_FIGSIZE, dpi=dpi)
 
     # Default discrete colors
     if colors is None:
-        colors = ["black", "white", "grey", "blue", "red"]
+        colors = OVERLAY_COLORS
 
     cmap = mcolors.ListedColormap(colors)
 
@@ -224,14 +239,7 @@ def plot_aggregate_channel_color_labelled(
     plt.tight_layout(pad=0)
 
     if save_path:
-        fig.savefig(
-            save_path,
-            dpi=dpi,
-            pil_kwargs={"compression": "tiff_lzw"},
-            bbox_inches="tight",
-            pad_inches=0,
-        )
-        plt.close(fig)
+        save_figure(fig, save_path, dpi=dpi, pad_inches=0)
     else:
         plt.show()
 
@@ -326,7 +334,7 @@ def _plot_distribution_panels(
         min(columns.max() + padding + 1, cell_masks.shape[1]),
     )
 
-    figure = plt.figure(figsize=(12, 9), constrained_layout=True)
+    figure = plt.figure(figsize=(12, 9), dpi=dpi, constrained_layout=True)
     grid = figure.add_gridspec(2, 2)
     section_axis = figure.add_subplot(grid[0, 0])
     image_axis = figure.add_subplot(grid[1, 0])
@@ -357,7 +365,7 @@ def _plot_distribution_panels(
         ~cell_region[row_slice, column_slice],
         aggregate_channel[row_slice, column_slice],
     )
-    channel_image = image_axis.imshow(intensity_image, cmap="magma")
+    channel_image = image_axis.imshow(intensity_image, cmap="magma", interpolation="nearest")
     if np.any(cropped_aggregates):
         image_axis.contour(
             cropped_aggregates.astype(float),
@@ -381,7 +389,7 @@ def _plot_distribution_panels(
         intensity_axis,
         np.cumsum(distribution.intensity_share),
         "Cumulative normalized intensity",
-        "Fraction of total cell intensity",
+        "Fraction of total puncta intensity" if aggregate_mask is not None else "Fraction of total cell intensity",
         "#d1495b",
     )
     intensity_axis.set_ylim(0, 1.05)

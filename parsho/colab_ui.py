@@ -9,10 +9,10 @@ from pathlib import Path
 
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
-import numpy as np
 from IPython.display import clear_output, display
 
 from parsho.single_image import DetectionSettings, load_field_channels
+from parsho.plotting import IMAGE_DPI, plot_aggregate_channel
 
 
 def control(widget_type, description, **kwargs):
@@ -137,18 +137,18 @@ class FieldPicker:
         self.loaded_signature = self.signature()
         columns = min(3, len(channels))
         fig, axes = plt.subplots((len(channels) + columns - 1) // columns, columns,
-                                 figsize=(5 * columns, 4 * ((len(channels) + columns - 1) // columns)), squeeze=False)
+                                 figsize=(5 * columns, 5 * ((len(channels) + columns - 1) // columns)),
+                                 dpi=IMAGE_DPI, squeeze=False)
         for axis in axes.ravel():
             axis.axis("off")
         for index, (axis, item) in enumerate(zip(axes.ravel(), channels), 1):
             image = item["image"]
-            low, high = np.percentile(image, (1, 99))
-            axis.imshow(image, cmap="gray", vmin=low, vmax=high if high > low else low + 1)
+            plot_aggregate_channel(image, ax=axis)
             axis.set_title(f"Channel {index}: {item['name']}\n{image.dtype}", fontsize=9)
         fig.tight_layout()
         plt.show()
         plt.close(fig)
-        print("Preview contrast is adjusted for visibility; measurements use the original pixel values.")
+        print("Grayscale previews use the same display as the example notebooks; measurements use the original pixel values.")
         print("Check alignment and channel identity, then continue to the next numbered step.")
 
     def require_loaded(self):
